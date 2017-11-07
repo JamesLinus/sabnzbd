@@ -22,10 +22,12 @@ sabnzbd.decoder - article decoder
 import binascii
 import logging
 import re
+import os
 import hashlib
-from time import sleep
+from time import sleep, time
 from threading import Thread
-
+import cPickle
+import uuid
 import sabnzbd
 from sabnzbd.constants import Status, MAX_DECODE_QUEUE, LIMIT_DECODE_QUEUE, SABYENC_VERSION_REQUIRED
 import sabnzbd.articlecache
@@ -118,12 +120,20 @@ class Decoder(Thread):
                         raise BadYenc
                     register = True
 
+                    # Save raw data
+                    pickle_path = os.path.join(article.nzf.nzo.workpath, str(uuid.uuid4()))
+                    with open(pickle_path, 'wb') as data_file:
+                        cPickle.dump((raw_data, article.bytes), data_file)
+
                     if self.__log_decoding:
                         logging.debug("Decoding %s", art_id)
 
                     data = self.decode(article, lines, raw_data)
                     nzf.article_count += 1
                     found = True
+
+                    # Decoding was fine, remove raw data
+                    os.remove(pickle_path)
 
                 except IOError, e:
                     logme = T('Decoding %s failed') % art_id
