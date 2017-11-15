@@ -798,6 +798,7 @@ class Downloader(Thread):
                 article.fetcher = None
 
                 # Allow all servers to iterate over each nzo/nzf again
+                article.reset_try_list()
                 sabnzbd.nzbqueue.NzbQueue.do.reset_try_lists(article.nzf, article.nzf.nzo)
 
         if destroy:
