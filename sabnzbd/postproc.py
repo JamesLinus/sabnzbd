@@ -182,56 +182,59 @@ class PostProcessor(Thread):
         # Start looping
         check_eoq = False
         while not self.__stop:
-            self.__busy = False
-
-            if self.paused:
-                time.sleep(5)
-                continue
-
             try:
-                nzo = self.queue.get(timeout=1)
-            except Queue.Empty:
-                if check_eoq:
-                    check_eoq = False
-                    handle_empty_queue()
+                self.__busy = False
+
+                if self.paused:
+                    time.sleep(5)
                     continue
-                else:
-                    nzo = self.queue.get()
 
-            # Stop job
-            if not nzo:
-                continue
+                try:
+                    nzo = self.queue.get(timeout=1)
+                except Queue.Empty:
+                    if check_eoq:
+                        check_eoq = False
+                        handle_empty_queue()
+                        continue
+                    else:
+                        nzo = self.queue.get()
 
-            # Job was already deleted.
-            if not nzo.work_name:
+                # Stop job
+                if not nzo:
+                    continue
+
+                # Job was already deleted.
+                if not nzo.work_name:
+                    check_eoq = True
+                    continue
+
+                # Flag NZO as being processed
+                nzo.pp_active = True
+
+                # Pause downloader, if users wants that
+                if cfg.pause_on_post_processing():
+                    sabnzbd.downloader.Downloader.do.wait_for_postproc()
+
+                self.__busy = True
+
+                process_job(nzo)
+
+                if nzo.to_be_removed:
+                    history_db = database.HistoryDB()
+                    history_db.remove_history(nzo.nzo_id)
+                    history_db.close()
+                    nzo.purge_data(keep_basic=False, del_files=True)
+
+                # Processing done
+                nzo.pp_active = False
+
+                self.remove(nzo)
                 check_eoq = True
-                continue
 
-            # Flag NZO as being processed
-            nzo.pp_active = True
-
-            # Pause downloader, if users wants that
-            if cfg.pause_on_post_processing():
-                sabnzbd.downloader.Downloader.do.wait_for_postproc()
-
-            self.__busy = True
-
-            process_job(nzo)
-
-            if nzo.to_be_removed:
-                history_db = database.HistoryDB()
-                history_db.remove_history(nzo.nzo_id)
-                history_db.close()
-                nzo.purge_data(keep_basic=False, del_files=True)
-
-            # Processing done
-            nzo.pp_active = False
-
-            self.remove(nzo)
-            check_eoq = True
-
-            # Allow download to proceed
-            sabnzbd.downloader.Downloader.do.resume_from_postproc()
+                # Allow download to proceed
+                sabnzbd.downloader.Downloader.do.resume_from_postproc()
+            except:
+                logging.error('Traceback: ', exc_info=True)
 
 
 def process_job(nzo):
